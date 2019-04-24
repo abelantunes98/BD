@@ -1,0 +1,133 @@
+-- Apagando tabelas do usuario atual.
+DROP OWNED BY CURRENT_USER;
+
+-- Criando tipos de estados aceitos
+CREATE DOMAIN estados_nordeste AS CHAR(2) NOT NULL CHECK(value in ('AL', 'BA', 'CE', 'MA', 'PB', 'PE', 'PI', 'RN', 'SE'));
+
+-- Definindo funcoes possiveis para funcionarios
+CREATE DOMAIN funcionarios_funcao_dom AS VARCHAR(13) NOT NULL CHECK (value in ('administrador', 'farmaceutico', 'vendedor', 'entregador', 'caixa'));
+
+-- Definindo dominio de funcoes permitidas para gerentes
+CREATE DOMAIN gerente_funcao_dom AS funcionarios_funcao_dom CHECK (value in ('administrador', 'farmaceutico'));
+
+-- Criando dominio para CPF aceito
+CREATE DOMAIN cpf_valido AS CHAR(11) NOT NULL CHECK (char_length(value) = 11);
+
+-- Criando tabela Funcionarios
+
+CREATE TABLE funcionarios (
+cpf cpf_valido UNIQUE, 
+nome VARCHAR(20), 
+sobrenome VARCHAR(20), 
+funcao funcionarios_funcao_dom, 
+PRIMARY KEY (cpf, funcao)
+);
+
+-- Criando tabela Farmacia
+
+CREATE TABLE farmacias (
+id SERIAL PRIMARY KEY, 
+estado_loc estados_nordeste NOT NULL, 
+cidade_loc VARCHAR(20), 
+bairro_loc VARCHAR(20), 
+tipo CHAR(1) CHECK(tipo in ('F', 'S')), 
+gerente_cpf cpf_valido NOT NULL, 
+gerente_funcao gerente_funcao_dom NOT NULL,
+CONSTRAINT funcionarios_fkey FOREIGN KEY (gerente_cpf, gerente_funcao)
+REFERENCES funcionarios (cpf, funcao),
+CONSTRAINT unica_farmacia_por_bairro EXCLUDE USING gist (bairro_loc WITH =, cidade_loc WITH =, estado_loc WITH =),
+CONSTRAINT unica_sede EXCLUDE USING gist (tipo WITH =) WHERE (tipo = 'S')
+);
+
+-- Criando tabela Medicamentos
+
+CREATE TABLE medicamentos (
+id SERIAL PRIMARY KEY, 
+restricao_de_venda BOOLEAN NOT NULL);
+
+-- Criando tabela clientes
+
+CREATE TABLE clientes (
+cpf cpf_valido PRIMARY KEY,
+nome VARCHAR(20), 
+sobrenome VARCHAR(20),
+idade INTEGER CHECK (idade >= 18)
+);
+
+--Criando tabela de enderecos dos clientes
+
+CREATE TABLE enderecos_clientes (
+id SERIAL PRIMARY KEY,
+cliente_cpf cpf_valido REFERENCES clientes (cpf),
+tipo VARCHAR(11) NOT NULL,
+estado CHAR(2) CHECK (char_length(estado) = 2),
+cidade VARCHAR(28),
+barro VARCHAR(30),
+rua VARCHAR(30),
+numero INTEGER
+);
+
+-- Criando tabela de vendas
+
+CREATE TABLE vendas (
+id SERIAL PRIMARY KEY,
+id_remedio INTEGER NOT NULL REFERENCES medicamentos (id),
+cpf_cliente cpf_valido REFERENCES
+clientes (cpf),
+cpf_vendedor cpf_valido REFERENCES funcionarios (cpf),
+uso_de_receita BOOLEAN NOT NULL,
+id_entrega INTEGER NOT NULL
+);
+
+-- Criando tabela de entregas
+CREATE TABLE entregas (
+id SERIAL PRIMARY KEY,
+id_endereco_entrega INTEGER REFERENCES enderecos_clientes (id) NOT NULL
+);
+
+-- Criando tabela com o id do funcionario e o id da farmacia que ele trabalha, pois a farmacia faz referencia
+-- ao cpf do gerente e a sua funcao, se o funcionario fizer referencia diretamente ao id da farmacia, nao terah
+-- como adicionar funcionarios ou farmacias, ja que um depende do outro.
+
+CREATE TABLE farmacia_funcionario (
+cpf_funcionario cpf_valido UNIQUE REFERENCES funcionarios (cpf),
+id_farmacia INTEGER NOT NULL REFERENCES farmacias (id),
+PRIMARY KEY (cpf_funcionario, id_farmacia)
+);
+
+-- Testes
+-- Inserindo funcionarios
+
+INSERT INTO funcionarios (cpf, nome, sobrenome, funcao) VALUES ('12345678911', 'Artur', 'Maia', 'vendedor');
+INSERT INTO funcionarios (cpf, nome, sobrenome, funcao) VALUES ('12345678912', 'Gustavo', 'Rick', 'administrador');
+INSERT INTO funcionarios (cpf, nome, sobrenome, funcao) VALUES ('12345678913', 'Riquinho', 'Rico', 'caixa');
+INSERT INTO funcionarios (cpf, nome, sobrenome, funcao) VALUES ('12345678914', 'The', 'Flash', 'entregador');
+INSERT INTO funcionarios (cpf, nome, sobrenome, funcao) VALUES ('12345678915', 'Raul', 'Seixas', 'farmaceutico');
+
+-- Tentando inserir com um cpf ja cadastrado (da erro)
+
+INSERT INTO funcionarios (cpf, nome, sobrenome, funcao) VALUES ('12345678911', 'Mario', 'Antunes', 'caixa');
+
+-- Inserindo farmacias como sedes e filiais
+
+INSERT INTO farmacias (estado_loc, cidade_loc, bairro_loc, tipo, gerente_cpf, gerente_funcao) VALUES ('PB', 'Campina Grande', 'Centro', 'S', '12345678912', 'administrador');
+
+INSERT INTO farmacias (estado_loc, cidade_loc, bairro_loc, tipo, gerente_cpf, gerente_funcao) VALUES ('PB', 'Campina Grande', 'Liberdade', 'F', '12345678912', 'administrador');
+
+INSERT INTO farmacias (estado_loc, cidade_loc, bairro_loc, tipo, gerente_cpf, gerente_funcao) VALUES ('PE', 'Recife', 'Centro', 'F', '12345678915', 'farmaceutico');
+
+-- Tentando inserir mais de uma sede (da erro)
+
+INSERT INTO farmacias (estado_loc, cidade_loc, bairro_loc, tipo, gerente_cpf, gerente_funcao) VALUES ('PB', 'Campina Grande', 'Bodocongo', 'S', '12345678915', 'farmaceutico');
+
+-- Tentando inserir mais de uma farmacia em um mesmo bairro (da erro)
+
+INSERT INTO farmacias (estado_loc, cidade_loc, bairro_loc, tipo, gerente_cpf, gerente_funcao) VALUES ('PB', 'Campina Grande', 'Centro', 'F', '12345678915', 'farmaceutico');
+
+-- Adicionando farmacias onde funcionarios trabalham
+
+INSERT INTO farmacia_funcionario (cpf_funcionario, id_farmacia) VALUES ('12345678912', 1);
+
+INSERT INTO farmacia_funcionario (cpf_funcionario, id_farmacia) VALUES ('12345678911', 1);
+
+INSERT INTO farmacia_funcionario (cpf_funcionario, id_farmacia) VALUES ('12345678914', 2);
