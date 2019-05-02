@@ -42,8 +42,10 @@ CONSTRAINT unica_sede EXCLUDE USING gist (tipo WITH =) WHERE (tipo = 'S')
 -- Criando tabela Medicamentos
 
 CREATE TABLE medicamentos (
-id SERIAL PRIMARY KEY, 
-restricao_de_venda BOOLEAN NOT NULL);
+id SERIAL UNIQUE, 
+restricao_de_venda BOOLEAN NOT NULL,
+PRIMARY KEY (id, restricao_de_venda)
+);
 
 -- Criando tabela clientes
 
@@ -71,12 +73,17 @@ numero INTEGER
 
 CREATE TABLE vendas (
 id SERIAL PRIMARY KEY,
-id_remedio INTEGER NOT NULL REFERENCES medicamentos (id),
-cpf_cliente cpf_valido REFERENCES
+id_remedio INTEGER NOT NULL,
+cpf_cliente CHAR(11) REFERENCES
 clientes (cpf),
-cpf_vendedor cpf_valido REFERENCES funcionarios (cpf),
+cpf_vendedor cpf_valido,
+funcao_vendedor funcionarios_funcao_dom,
 uso_de_receita BOOLEAN NOT NULL,
-id_entrega INTEGER NOT NULL
+id_entrega INTEGER,
+CONSTRAINT funcionarios_fkey FOREIGN KEY (cpf_vendedor, funcao_vendedor) REFERENCES funcionarios (cpf, funcao),
+CONSTRAINT medicamentos_fkey FOREIGN KEY (id_remedio, uso_de_receita) REFERENCES medicamentos (id, restricao_de_venda),
+CONSTRAINT receita_cliente_cadastrado CHECK ((uso_de_receita = false) OR (cpf_cliente is not null)),
+CONSTRAINT so_vendedor_vende CHECK (funcao_vendedor in ('vendedor'))
 );
 
 -- Criando tabela de entregas
@@ -84,6 +91,8 @@ CREATE TABLE entregas (
 id SERIAL PRIMARY KEY,
 id_endereco_entrega INTEGER REFERENCES enderecos_clientes (id) NOT NULL
 );
+
+ALTER TABLE vendas ADD CONSTRAINT so_entrega_para_cli_cadas CHECK ((id_entrega is null) OR (cpf_cliente is not null));
 
 -- Criando tabela com o id do funcionario e o id da farmacia que ele trabalha, pois a farmacia faz referencia
 -- ao cpf do gerente e a sua funcao, se o funcionario fizer referencia diretamente ao id da farmacia, nao terah
@@ -131,3 +140,23 @@ INSERT INTO farmacia_funcionario (cpf_funcionario, id_farmacia) VALUES ('1234567
 INSERT INTO farmacia_funcionario (cpf_funcionario, id_farmacia) VALUES ('12345678911', 1);
 
 INSERT INTO farmacia_funcionario (cpf_funcionario, id_farmacia) VALUES ('12345678914', 2);
+
+-- Testando vendas
+
+INSERT INTO medicamentos (restricao_de_venda) values (true);
+
+INSERT INTO medicamentos (restricao_de_venda) values (false);
+
+-- Compra com receita para cliente desconhecido (da erro)
+
+INSERT INTO vendas (id_remedio, cpf_cliente, cpf_vendedor, funcao_vendedor, uso_de_receita, id_entrega) VALUES (1, null, 12345678911, 'vendedor', true, null);
+
+-- Funcionario diferente de vendedor tentando vender (da erro)
+ 
+INSERT INTO vendas (id_remedio, cpf_cliente, cpf_vendedor, funcao_vendedor, uso_de_receita, id_entrega) VALUES (1, null, 12345678913, 'caixa', false, null);
+
+-- Cliente desconhecido (da erro)
+
+INSERT INTO vendas (id_remedio, cpf_cliente, cpf_vendedor, funcao_vendedor, uso_de_receita, id_entrega) VALUES (1, 111, 12345678911, 'vendedor', true, null);
+
+INSERT INTO vendas (id_remedio, cpf_cliente, cpf_vendedor, funcao_vendedor, uso_de_receita, id_entrega) VALUES (2, null, 12345678911, 'vendedor', false, null);
